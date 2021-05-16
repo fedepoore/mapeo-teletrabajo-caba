@@ -1,0 +1,594 @@
+---
+title: "Mapeando el teletrabajo en CABA durante la pandemia"
+author: "Federico Poore"
+date: "16/5/2021"
+output:
+    html_document:
+       df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,  message= FALSE, warning = FALSE)
+```
+
+## Introducción
+
+Pocas semanas después de la declaración de la pandemia comencé a trabajar en mi tesis de maestría en Economía Urbana. Una de mis hipótesis fue que la desconcentración del área central de negocios en la Ciudad de Buenos Aires por parte de personas que dejaron de trabajar de manera presencial podría alentar el surgimiento de nuevos subcentros en diferentes barrios.
+
+Para medir este fenómeno, preparé y difundí una encuesta entre personas que trabajan en la ciudad donde les preguntaba sobre sus prácticas laborales para dos períodos bien definidos: febrero de 2020 (el instante inmediatamente anterior a la pandemia) y noviembre de 2020 (el momento en el que el gobierno ponía final al ASPO y daba inicio al DISPO en el área metropolitana). 
+
+A fines de simplificar el análisis, solo tomé los casos de personas que viven *y trabajan* en CABA, sin pretensión explicativa sobre el universo de cientos de miles de personas que viven en el Gran Buenos Aires y trabajan en la capital. De la misma manera, la encuesta no capta a personas que poseen un nivel educativo de primaria o inferior (4,5% del total de trabajadores según estadísticas oficiales del GCBA). En otras palabras, *todos los hallazgos mapeados a continuación son válidos únicamente para los porteños con nivel educativo secundario o superior.*
+
+La encuesta, organizada mediante SurveyMonkey, dio como resultado un .csv donde cada columna representa una pregunta (dónde vive, en qué barrio, dónde queda su lugar de trabajo, en qué barrio, si hacía trabajo remoto hacia febrero de 2020, si hacía trabajo remoto hacia noviembre de 2020). 
+
+*Otras respuestas socioambientales (tipo de grupo familiar, número de ambientes de uso exclusivo en la vivienda) o más generales sobre edad y sexo fueron separados de la planilla e incorporados a un análisis multivariado que realicé con STATA.*
+
+De esta manera,
+
+* *Calle vivienda (ej: Humberto Primo)*
+* *Altura vivienda (ej: 1200)*
+* *Barrio vivienda (ej: Constitución)*
+* *Presencialidad del trabajo feb-20 (ej: trabajaba de manera presencial)*
+* *Calle trabajo (ej: Perú)*
+* *Altura trabajo (ej: 100)*
+* *Barrio trabajo (ej: San Telmo)*
+* *Presencialidad del trabajo nov-20 (ej: trabajaba de manera remota)*
+
+
+En el ejemplo, esa fila indicaría una persona que vive en Humberto Primo al 1200 (Constitución), que en febrero trabajaba de manera presencial en Perú al 100 (San Telmo), pero que en noviembre pasó a trabajar de manera remota por lo que en noviembre tanto su vivienda como su lugar de empleo pasó a ser Humberto Primo al 1200 (Constitución). *Para alentar la participación y proteger al máximo los datos personales de los participantes en la encuesta pedí por direcciones aproximadas; así, alguien que vivía en Humberto Primo 1224 3° B podía decir que vivía en Humberto Primo al 1200.*
+
+
+## Limpiando los datos
+
+Me tomé una tarde para limpiar mis datos, dejando un csv prolijo con nomenclatura uniforme, de manera tal que todas las columnas con números quedaran sólo con números y que todos los "Libertador", "Del Libertador", "Libertadoi" *(sic)* quedaran como "Av. Del Libertador", los "Julio Roca", "Diagonal Sur" como "Julio A. Roca". Para ver cómo escribir las direcciones que podrían interpretarse de diferentes maneras busqué cómo figuraban en OpenStreetMap.
+
+Algunos de los principales cambios que tuve que hacer para asegurarme que me tomara bien las direcciones:
+
+
+* *Freire -> Cap. Gral. Ramón Freire*
+* *Anchorena -> Dr. Tomás Manuel de Anchorena*
+* *Sucre -> Mariscal Antonio José de Sucre*
+* *Roca -> Av. Pres. Julio A. Roca*
+* *Perón -> Pres. Tte. Gral. Juan Domingo Perón* (se la confundía con la Av. Eva Perón y en algunos casos me mandaba a direcciones en PBA)
+
+
+Como a los participantes les pedí que me brindaran una dirección aproximada, algunas de las direcciones que ingresaron terminaban siendo no existentes (alguien que vivía en Nogoya 2414 me decía que vivía en "Nogoya 2400" pero la numeración oficial arranca en el 2401, por lo que me tiraban error). Las corregí a mano.
+
+En otros casos la dirección existía pero el *mapping* no los tomaba, quizás por estar tabulados como S/N según la nomenclatura oficial, pasó con Ciudad Universitaria o con los ministerios ubicados en barrios populares. En ese caso puse manualmente la dirección más cercana (en vez de *Int. Güiraldes 2620* lo cambié a *Av. Figureoa Alcorta 7300*). Lo mismo con el Ministerio de Desarrollo Social, acaso el único inmueble ubicado *sobre* la Avenida 9 de Julio, lo cambié a *Lima 300*.
+
+
+## Georreferenciando las direcciones
+
+Para poder mapear los resultados ahora debemos convertir el formato **calle** y **altura** a coordenadas geográficas de longitud y latitud. Hay dos opciones: o se usa la API de Google Maps o se usa la API de hereR. En ambos casos hay que registrarse y sacar una *API key* (una suerte de código asociado a un usuario único) que nos permitirá solicitar información del servicio.
+
+- Para la API de Google Maps: https://rpubs.com/HAVB/georef
+- Para la API de hereR: https://docs.google.com/document/d/1LNnfZHcs_kXHrh_P3-w1YMrZA_j7T_h560tK6Ku1A7g/edit
+
+En cualquiera de las dos opciones el último paso consiste en usar la función `geocode_dataframe` que nos termina devolviendo el dataframe que teníamos más unas preciadas columnas **lat** y **lng** con las coordenadas de latitud y longitud de cada una de las direcciones. A ese nuevo dataframe lo guardamos como un nuevo .csv usando la función `write_csv`.
+
+(Nota importante: para poder discriminar mejor entre ubicación de las viviendas y ubicación de los empleos, dupliqué cada una de las filas del .csv de las respuestas que generó SurveyMonkey. Así, el mismo participante (ID) que decía que vivía en Constitución y trabajaba en San Telmo tenía dos filas en el .csv, en ambos su **barrio.vivienda** era "Constitución" y su **barrio.trabajo** era "San Telmo" - pero la primera fila decía "vivienda" en la columna **sitio** y detallaba la dirección de la vivienda, y la segunda decía "trabajo" en la columna **sitio** y detallaba la dirección del lugar de trabajo.)
+
+El resultado de todo este trabajo es **mapeo_teletrabajo_geo.csv**, el cual cargamos con la codificación UTF-8 que nos permite conservar los acentos y caracteres especiales.
+
+```{r}
+mapeo_teletrabajo_geo <- read.csv("mapeo_teletrabajo_geo.csv", encoding = "UTF-8")
+
+mapeo_teletrabajo_geo
+```
+
+
+## Mapeando los hallazgos
+
+Cargamos los paquetes *tidyverse* (para editar dataframes), *osmdata* (para descargarse el mapa de CABA) y *ggmap* (para obtener mapas de OpenStreetMap y graficar puntos sobre esos mapas).
+
+```{r}
+library(tidyverse)
+library(ggmap)
+library(osmdata)
+```
+
+Acto seguido indicamos cuál es la ciudad de fondo que queremos, esa va a ser nuestra área geográfica o bounding box (bbox).
+
+```{r}
+bbox <- getbb("Ciudad Autonoma de Buenos Aires,Argentina")
+```
+
+Utilizando la función `get_stamenmap` asignamos a esa bounding box con el nombre de CABA.
+
+```{r}
+CABA <- get_stamenmap(bbox = bbox,
+                      maptype = "terrain", zoom = 12)
+```
+
+Y acá empieza un proceso que vamos a repetir para cada dato que queramos mapear. Primero, usamos la función `filter` para generar un nuevo dataset con información específica, por ejemplo, elegimos solo las columnas de "vivienda" en la columna **sitio** para crear un nuevo dataframe con la localización de todas las viviendas llamado **mapeo_vivienda**
+
+```{r}
+mapeo_vivienda <- mapeo_teletrabajo_geo  %>% filter(sitio == "vivienda")
+```
+
+Y ahora mapeamos. Usado `ggmap` cargamos el mapa de base en cuestión y con `geom_point` indicamos qué puntos queremos mapear, en este caso, el mapeo_vivienda donde la X es la longitud y la Y la latitud. *Las últimas dos líneas de código eliminan los labels de longitud y latitud, que son muy poco relevantes en este caso, donde vamos a estar mapeando siempre sobre la misma porción acotada del AMBA.*
+
+```{r}
+ggmap(CABA) +
+  geom_point(data = mapeo_vivienda, aes(x = lng, y = lat), color="firebrick", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+Acá tenemos, en rojo, está la ubicación de todas las viviendas de las personas que respondieron la encuesta. 
+
+Seguimos los mismos pasos para generar y mapear, en azul, la localización de todos los lugares de trabajo.
+
+```{r}
+mapeo_trabajo <- mapeo_teletrabajo_geo  %>% filter(sitio == "trabajo")
+```
+
+```{r}
+ggmap(CABA) +
+  geom_point(data = mapeo_trabajo, aes(x = lng, y = lat), color="navyblue", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+```
+
+Ahora bien, conocer la ubicación de todas las viviendas y los lugares de empleo de las personas que contestaron la encuesta no tiene mayor interés más que para quien hizo la encuesta (permite un primer vistazo a la distribución geográfica y chequear que no haya valores por fuera de CABA, por ejemplo).
+
+Ahora vamos a ver los datos que nos permitirán comprobar la hipótesis central de la encuesta, es decir, *cuántos empleos dejaron de hacerse de manera presencial (en el especial en el microcentro) y cuántos comenzaron a hacerse de manera remota durante la pandemia*.
+
+El primer paso es la situación base, la "fotografía" del momento inmediatamente anterior a que el Covid cambiara nuestras vidas para siempre. Generamos un dataset con la localización de todas las viviendas cuyos habitantes trabajaban de manera *remota* en *febrero* de 2020 y lo mapeamos.
+
+```{r}
+mapeo_vivienda_remoto_feb <- mapeo_teletrabajo_geo %>% filter(sitio == "vivienda", Presencialidad.del.trabajo.feb.2020 == "Trabajaba de manera remota (desde el hogar)")
+```
+
+```{r}
+ggmap(CABA) +
+  geom_point(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat), color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+```
+
+Si en lugar de puntos queremos una estimación de densidad, podemos hacerla utilizando la función `geom_density2d`.
+
+```{r}
+ggmap(CABA) +
+    geom_density2d(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat, color = stat(level))) +
+    scale_color_viridis_c(limits = c(50, 200)) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+```
+
+Primeros hallazgos: justo antes de la irrupción de la pandemia, el fenómeno del trabajo remoto ya era incipiente en ciertas zonas de Palermo, Almagro, Villa Crespo, Recoleta y Balvanera, y en un sector de Belgrano y Colegiales.
+
+Continuando con la situación pre-pandemia, generamos y mapeamos un dataset con la ubicación de todos los empleos cuyos trabajadores acudían presencialmente al lugar de trabajo en febrero.
+
+```{r}
+mapeo_trabajo_pres_feb <- mapeo_teletrabajo_geo  %>% filter(sitio == "trabajo", Presencialidad.del.trabajo.feb.2020 == "Trabajaba de manera presencial en la empresa/organismo")
+
+```
+
+```{r}
+ggmap(CABA) +
+  geom_point(data = mapeo_trabajo_pres_feb, aes(x = lng, y = lat), color="darkslateblue", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+Nuevamente, usamos la función `geom_density2d` para una estimación de densidad.
+
+```{r}
+ggmap(CABA) +
+    geom_density2d(data = mapeo_trabajo_pres_feb, aes(x = lng, y = lat, color = stat(level))) +
+    scale_color_viridis_c(limits = c(50, 600)) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+```
+
+Esperablemente, lo que observamos de la "vieja normalidad" es una altísima concentración de empleos presenciales en el micro y macrocentro, en especial cerca del Obelisco y de Plaza de Mayo.
+
+Fast forward hasta noviembre. La pandemia es una realidad. El gobierno nacional obliga a un *shutdown* económico y va habilitando actividades muy lentamente. CABA lleva meses y meses de aislamiento obligatorio (ASPO). ¿Qué pasa con el trabajo remoto?
+
+Repetimos los pasos anteriores: generamos un dataset y mapeamos la localización de aquellas viviendas cuyos habitantes trabajaban de manera remota en noviembre.
+
+```{r}
+mapeo_vivienda_remoto_nov <- mapeo_teletrabajo_geo %>% filter(sitio == "vivienda", Presencialidad.del.trabajo.nov.2020 == "Trabajaba de manera remota (desde el hogar)")
+```
+
+```{r}
+ggmap(CABA) +
+  geom_point(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat), color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+```
+
+```{r}
+ggmap(CABA) +
+    geom_density2d(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat, color = stat(level))) +
+    scale_color_viridis_c(limits = c(50, 200)) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+```
+
+Otro hallazgo: tras la irrupción de la pandemia, se sumaron al teletrabajo varias otras zonas residenciales, particularmente  una porción de Villa Urquiza cerca de la estación de trenes y del subte B, buena parte del barrio de Caballito y los alrededores de Parque Centenario, un área de Flores y partes de Núñez. De hecho, el barrio de Núñez se agrupa con el resto de los barrios de la Comuna 13 para formar una suerte de “polo de home office” en la zona norte de la ciudad.
+
+¿Qué pasa con los empleos presenciales? Creamos dataset y mapeamos.
+
+```{r}
+mapeo_trabajo_pres_nov <- mapeo_teletrabajo_geo  %>% filter(sitio == "trabajo", Presencialidad.del.trabajo.nov.2020 == "Trabajaba de manera presencial en la empresa/organismo")
+
+```
+
+```{r}
+ggmap(CABA) +
+  geom_point(data = mapeo_trabajo_pres_nov, aes(x = lng, y = lat), color="darkslateblue", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+```{r}
+ggmap(CABA) +
+    geom_density2d(data = mapeo_trabajo_pres_nov, aes(x = lng, y = lat, color = stat(level))) +
+    scale_color_viridis_c(limits = c(50, 600)) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+```
+
+En el gráfico de densidad se advierte bien el efecto desconcentrador que la pandemia tuvo sobre los empleos presenciales en el área central. (Importante para poder comparar con los gráficos de febrero es mantener la misma escala, algo que ajusté manualmente mediante el comando *limits*, donde los niveles de densidad quedan idénticos al gráfico anterior de empleos, con un mínimo de 50 y un máximo de 600).
+
+¿Qué pasa si queremos hacer zoom en el microcentro?
+
+Primero generamos una nueva *bounding box*. Afortunadamente, OpenStreetMap entiende comandos como "Microcentro, Ciudad Autonoma de Buenos Aires, Argentina". Otra clave: a la hora de descargarlo mediante `get_stamenmap`, usamos un mayor zoom (el default es 12, acá lo cambiamos 16; se puede ir probando).
+
+```{r}
+bbox_poly <- getbb("Microcentro,Ciudad Autonoma de Buenos Aires,Argentina")
+```
+
+```{r}
+CABA_micro <- get_stamenmap(bbox = bbox_poly,
+                            maptype = "terrain", zoom = 16)
+```
+
+Es sobre ese mapa del microcentro que mapeamos todos los lugares de empleo cuyos trabajadores acudían de manera presencial, en febrero y en noviembre. La comparación es muy gráfica.
+
+```{r}
+ggmap(CABA_micro) +
+  geom_point(data = mapeo_trabajo_pres_feb, aes(x = lng, y = lat), size=4, color="darkslateblue", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+```{r}
+ggmap(CABA_micro) +
+  geom_point(data = mapeo_trabajo_pres_nov, aes(x = lng, y = lat), size=4, color="darkslateblue", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+
+De la misma manera, pero con color rojo, ahora vamos a tratar de advertir el surgimiento de potenciales subcentros de cara a la nueva normalidad. ¿En qué nos basamos? En que es razonable suponer que los trabajadores a tiempo completo que dejan de ir de lunes a viernes al microcentro pueden comenzar a realizar al menos una parte de los consumos que antes realizaban al interior del área central (restaurantes, cafeterías, deliveries, artículos de oficina, eventualmente tintorerías o gimnasios) en las cercanías de su hogar. Y esto, a su vez, podría alentar comportamientos estratégicos por parte de negocios que buscan seguir la tendencias de concentración del consumo. 
+
+¿Cuáles parecen ser los "ganadores" geográficos de la pandemia?
+
+Veamos cuántos de los participantes de la encuesta de Colegiales trabajaban desde su casa en febrero...
+
+```{r}
+bbox_colegiales <- getbb("Colegiales, Buenos Aires, Comuna 13, Ciudad Autónoma de Buenos Aires, Argentina")
+```
+
+```{r}
+CABA_colegiales <- get_stamenmap(bbox = bbox_colegiales,
+                            maptype = "terrain", zoom = 16)
+```
+
+```{r}
+ggmap(CABA_colegiales) +
+  geom_point(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+... y ahora en noviembre.
+
+```{r}
+ggmap(CABA_colegiales) +
+  geom_point(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+Veamos el caso de Villa Crespo. Febrero contra noviembre.
+
+```{r}
+bbox_villacrespo <- getbb("Villa Crespo, Buenos Aires, Comuna 15, Ciudad Autónoma de Buenos Aires, Argentina")
+```
+
+
+```{r}
+CABA_villacrespo <- get_stamenmap(bbox = bbox_villacrespo,
+                            maptype = "terrain", zoom = 16)
+```
+
+```{r}
+ggmap(CABA_villacrespo) +
+  geom_point(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+```{r}
+ggmap(CABA_villacrespo) +
+  geom_point(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+Caballito, febrero vs noviembre.
+
+```{r}
+bbox_caballito <- getbb("Caballito, Buenos Aires, Comuna 6, Ciudad Autónoma de Buenos Aires, Argentina")
+```
+
+```{r}
+CABA_caballito <- get_stamenmap(bbox = bbox_caballito,
+                            maptype = "terrain", zoom = 16)
+```
+
+```{r}
+ggmap(CABA_caballito) +
+  geom_point(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+```{r}
+ggmap(CABA_caballito) +
+  geom_point(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+Palermo.
+
+```{r}
+bbox_palermo <- getbb("Palermo, Buenos Aires, Comuna 14, Ciudad Autónoma de Buenos Aires, Argentina")
+```
+
+```{r}
+CABA_palermo <- get_stamenmap(bbox = bbox_palermo,
+                            maptype = "terrain", zoom = 16)
+```
+
+```{r}
+ggmap(CABA_palermo) +
+  geom_point(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+```{r}
+ggmap(CABA_palermo) +
+  geom_point(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+```
+
+Núñez.
+
+```{r}
+bbox_nunez <- getbb("Núñez, Buenos Aires, Comuna 13, Ciudad Autónoma de Buenos Aires, Argentina")
+```
+
+```{r}
+CABA_nunez <- get_stamenmap(bbox = bbox_nunez,
+                            maptype = "terrain", zoom = 15)
+```
+
+```{r}
+
+ggmap(CABA_nunez) +
+  geom_point(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+
+```
+
+```{r}
+ggmap(CABA_nunez) +
+  geom_point(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+
+```
+
+Flores es quizás la gran excepción dentro de los "nuevos polos" que no podría ser considerado un barrio de clase media-alta.
+
+```{r}
+bbox_flores <- getbb("Flores, Buenos Aires, Comuna 7, Ciudad Autónoma de Buenos Aires, Argentina")
+```
+
+```{r}
+CABA_flores <- get_stamenmap(bbox = bbox_flores,
+                            maptype = "terrain", zoom = 15)
+```
+
+```{r}
+ggmap(CABA_flores) +
+  geom_point(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+
+```
+
+```{r}
+ggmap(CABA_flores) +
+  geom_point(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+
+```
+
+Las chances son infinitas y el ejercicio se puede repetir para todos los barrios de CABA.
+
+Un último ejemplo interesante es el de Recoleta, un barrio que con la pandemia ha perdido muchos empleos presenciales pero que a la vez ha ganado muchas viviendas de teletrabajadores.
+
+```{r}
+bbox_recoleta <- getbb("Recoleta, Buenos Aires, Comuna 2, Ciudad Autónoma de Buenos Aires, Argentina")
+```
+
+```{r}
+CABA_recoleta <- get_stamenmap(bbox = bbox_recoleta,
+                            maptype = "terrain", zoom = 15)
+```
+
+Veamos la situación en el barrio en febrero...
+
+```{r}
+ggmap(CABA_recoleta) +
+  geom_point(data = mapeo_vivienda_remoto_feb, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  geom_point(data = mapeo_trabajo_pres_feb, aes(x = lng, y = lat),
+             size=4, color="darkslateblue", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+
+```
+
+... y qué pasaba hacia noviembre.
+
+```{r}
+ggmap(CABA_recoleta) +
+  geom_point(data = mapeo_vivienda_remoto_nov, aes(x = lng, y = lat), size=4, color="brown3", alpha=0.5) +
+  geom_point(data = mapeo_trabajo_pres_nov, aes(x = lng, y = lat),
+             size=4, color="darkslateblue", alpha=0.5) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = unit(c(0, 0, -1, -1), 'lines')) +
+  xlab('') +
+  ylab('')
+
+
+```
+
+Es decir que podría ser que el vaciamiento (por menor cantidad de empleos físicos) termine compensado por la revitalización (por mayor cantidad de empleo remoto de personas que viven y trabajan en el barrio) y que el "efecto neto" sea neutro.
+
+Hay mucha más tela para cortar, pero es un comienzo.
+
+
+*Mi tesis de maestría “Teletrabajo en tiempos de Covid-19. Un análisis espacial y multivariado en Ciudad de Buenos Aires” fue presentada en mayo de 2021 y está en proceso de lectura. Los hallazgos resultan de un cuestionario anónimo autoadministrado de 2.511 casos dirigido a la población ocupada de entre 18 y 64 años, residentes de la Ciudad Autónoma de Buenos Aires con nivel educativo secundario incompleto o superior que desarrollan sus tareas en la ciudad y que mantuvieron el mismo empleo entre febrero y noviembre de 2020. La encuesta se realizó entre el 20 de enero y el 20 de febrero de 2021.*
